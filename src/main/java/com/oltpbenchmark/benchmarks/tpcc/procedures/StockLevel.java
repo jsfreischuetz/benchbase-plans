@@ -46,7 +46,7 @@ public class StockLevel extends TPCCProcedure {
   public SQLStmt stockGetCountStockSQL =
       new SQLStmt(
           """
-        SELECT COUNT(DISTINCT (S_I_ID)) AS STOCK_COUNT
+        EXPLAIN ANALYZE SELECT COUNT(DISTINCT (S_I_ID)) AS STOCK_COUNT
          FROM  %s, %s
          WHERE OL_W_ID = ?
          AND OL_D_ID = ?
