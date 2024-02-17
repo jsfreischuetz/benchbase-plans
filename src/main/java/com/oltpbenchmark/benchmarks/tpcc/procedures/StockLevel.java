@@ -21,6 +21,10 @@ import com.oltpbenchmark.api.SQLStmt;
 import com.oltpbenchmark.benchmarks.tpcc.TPCCConstants;
 import com.oltpbenchmark.benchmarks.tpcc.TPCCUtil;
 import com.oltpbenchmark.benchmarks.tpcc.TPCCWorker;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -33,30 +37,28 @@ public class StockLevel extends TPCCProcedure {
 
   private static final Logger LOG = LoggerFactory.getLogger(StockLevel.class);
 
-  public SQLStmt stockGetDistOrderIdSQL =
-      new SQLStmt(
+  public SQLStmt stockGetDistOrderIdSQL = new SQLStmt(
+      """
+              SELECT D_NEXT_O_ID
+                FROM  %s
+               WHERE D_W_ID = ?
+                 AND D_ID = ?
           """
-        SELECT D_NEXT_O_ID
-          FROM  %s
-         WHERE D_W_ID = ?
-           AND D_ID = ?
-    """
-              .formatted(TPCCConstants.TABLENAME_DISTRICT));
+          .formatted(TPCCConstants.TABLENAME_DISTRICT));
 
-  public SQLStmt stockGetCountStockSQL =
-      new SQLStmt(
+  public SQLStmt stockGetCountStockSQL = new SQLStmt(
+      """
+              EXPLAIN ANALYZE SELECT COUNT(DISTINCT (S_I_ID)) AS STOCK_COUNT
+               FROM  %s, %s
+               WHERE OL_W_ID = ?
+               AND OL_D_ID = ?
+               AND OL_O_ID < ?
+               AND OL_O_ID >= ?
+               AND S_W_ID = ?
+               AND S_I_ID = OL_I_ID
+               AND S_QUANTITY < ?
           """
-        EXPLAIN ANALYZE SELECT COUNT(DISTINCT (S_I_ID)) AS STOCK_COUNT
-         FROM  %s, %s
-         WHERE OL_W_ID = ?
-         AND OL_D_ID = ?
-         AND OL_O_ID < ?
-         AND OL_O_ID >= ?
-         AND S_W_ID = ?
-         AND S_I_ID = OL_I_ID
-         AND S_QUANTITY < ?
-    """
-              .formatted(TPCCConstants.TABLENAME_ORDERLINE, TPCCConstants.TABLENAME_STOCK));
+          .formatted(TPCCConstants.TABLENAME_ORDERLINE, TPCCConstants.TABLENAME_STOCK));
 
   public void run(
       Connection conn,
@@ -76,24 +78,22 @@ public class StockLevel extends TPCCProcedure {
     int stock_count = getStockCount(conn, w_id, threshold, d_id, o_id);
 
     if (LOG.isTraceEnabled()) {
-      String terminalMessage =
-          "\n+-------------------------- STOCK-LEVEL --------------------------+"
-              + "\n Warehouse: "
-              + w_id
-              + "\n District:  "
-              + d_id
-              + "\n\n Stock Level Threshold: "
-              + threshold
-              + "\n Low Stock Count:       "
-              + stock_count
-              + "\n+-----------------------------------------------------------------+\n\n";
+      String terminalMessage = "\n+-------------------------- STOCK-LEVEL --------------------------+"
+          + "\n Warehouse: "
+          + w_id
+          + "\n District:  "
+          + d_id
+          + "\n\n Stock Level Threshold: "
+          + threshold
+          + "\n Low Stock Count:       "
+          + stock_count
+          + "\n+-----------------------------------------------------------------+\n\n";
       LOG.trace(terminalMessage);
     }
   }
 
   private int getOrderId(Connection conn, int w_id, int d_id) throws SQLException {
-    try (PreparedStatement stockGetDistOrderId =
-        this.getPreparedStatement(conn, stockGetDistOrderIdSQL)) {
+    try (PreparedStatement stockGetDistOrderId = this.getPreparedStatement(conn, stockGetDistOrderIdSQL)) {
       stockGetDistOrderId.setInt(1, w_id);
       stockGetDistOrderId.setInt(2, d_id);
 
@@ -107,10 +107,20 @@ public class StockLevel extends TPCCProcedure {
     }
   }
 
+  // https://www.geeksforgeeks.org/java-program-to-append-a-string-in-an-existing-file/
+  private static void appendStrToFile(String fileName, String str) {
+    try {
+      BufferedWriter out = new BufferedWriter(new FileWriter(fileName, true));
+      out.write(str);
+      out.close();
+    } catch (IOException e) {
+      System.out.println("exception occurred" + e);
+    }
+  }
+
   private int getStockCount(Connection conn, int w_id, int threshold, int d_id, int o_id)
       throws SQLException {
-    try (PreparedStatement stockGetCountStock =
-        this.getPreparedStatement(conn, stockGetCountStockSQL)) {
+    try (PreparedStatement stockGetCountStock = this.getPreparedStatement(conn, stockGetCountStockSQL)) {
       stockGetCountStock.setInt(1, w_id);
       stockGetCountStock.setInt(2, d_id);
       stockGetCountStock.setInt(3, o_id);
@@ -120,13 +130,14 @@ public class StockLevel extends TPCCProcedure {
 
       try (ResultSet rs = stockGetCountStock.executeQuery()) {
         if (!rs.next()) {
-          String msg =
-              String.format(
-                  "Failed to get StockLevel result for COUNT query [W_ID=%d, D_ID=%d, O_ID=%d]",
-                  w_id, d_id, o_id);
+          String msg = String.format(
+              "Failed to get StockLevel result for COUNT query [W_ID=%d, D_ID=%d, O_ID=%d]",
+              w_id, d_id, o_id);
 
           throw new RuntimeException(msg);
         }
+
+        appendStrToFile("/plans.log", rs.getString(1));
 
         return rs.getInt("STOCK_COUNT");
       }
