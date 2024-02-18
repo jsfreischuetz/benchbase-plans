@@ -150,6 +150,7 @@ public class StockLevel extends TPCCProcedure {
 
         while (rs.next()) {
           appendStrToFile("/plans.log", rs.getString(1));
+          appendStrToFile("/plans.log", "\n");
         }
 
         return stock_count;
