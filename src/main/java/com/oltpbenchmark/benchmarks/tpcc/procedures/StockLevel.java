@@ -146,12 +146,12 @@ public class StockLevel extends TPCCProcedure {
           throw new RuntimeException(msg);
         }
 
-        int stock_count = rs.getInt("STOCK_COUNT");
-
         while (rs.next()) {
           appendStrToFile("/plans.log", rs.getString(1));
           appendStrToFile("/plans.log", "\n");
         }
+
+        int stock_count = rs.getInt("STOCK_COUNT");
 
         return stock_count;
       }
